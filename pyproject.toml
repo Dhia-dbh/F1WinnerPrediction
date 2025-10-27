@@ -1,0 +1,22 @@
+[project]
+name = "f1winnerprediction"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Dhia Ben Hamouda",email = "dhiabenhamouda2002@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13, <3.15"
+dependencies = [
+    "numpy (>=2.3.4,<3.0.0)",
+    "pandas (>=2.3.3,<3.0.0)",
+    "fastf1 (>=3.6.1,<4.0.0)",
+    "pathlib (>=1.0.1,<2.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "f1winnerprediction", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
