@@ -10,6 +10,8 @@ from fastf1.core import Session as fastf1_session
 
 import f1winnerprediction.config as config
 
+# TODO: Implement session caching
+# TODO: Refactor code and move helper function to utils.py
 sessions_dump_path = config.FASTF1_CHECKPOINT_DIR / "sessions_dump.pkl"
 checkpoint_dump_path = config.FASTF1_CHECKPOINT_DIR / "checkpoint.json"
 
@@ -104,65 +106,70 @@ def _is_sessions_dict_valid(sessions: dict) -> bool:
                 return False
     return True
 
-def fetch_race_sessions_cache(years: list[int]) -> dict[int, list[fastf1_session]]:
+def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], checkpoint: dict[str, int] = config.DEFAULT_CHECKPOINT) -> dict[int, list[fastf1_session]]:
+    sessions = {}
+    count = 0
+    gp_index_start = checkpoint["gp_index_start"]
+    for year, nb_gp in zip(years, number_of_races_per_gp):
+        sessions[year] = []
+        for gp_index in range(gp_index_start, nb_gp+1):
+            try:
+                session = fastf1.get_session(year, gp_index, 'R')
+            except Exception as e:
+                logging.error(f"ERROR FETCHING SESSION: {year} {gp_index} - {e}")
+                continue
+            gp_name = session.event.EventName
+            print(f"+------- FETCHING GP: {gp_name} {year} {gp_index}/{nb_gp} -------+")
+            try:
+                session.load()
+            except Exception as e:
+                logging.error(f"ERROR LOADING SESSION: {year} {gp_index} - {e}")
+                continue
+            sessions[year].append(session)
+            count += 1
+    
+            if count % 5 == 0:
+                logging.info("Saving checkpoint..")
+                if _is_sessions_dict_valid(sessions):
+                    save_sessions(sessions)
+                    save_checkpoint(checkpoint)
+                else:
+                    logging.error("Sessions dict is invalid, skipping checkpoint save.")
+                    pprint.pprint(sessions)
+                    break
+                checkpoint["year"] = year
+                checkpoint["gp_index_start"] = gp_index
+                count = 0
+    return sessions
+
+
+def fetch_race_sessions_cache(years_to_fetch: list[int]) -> dict[int, list[fastf1_session]]:
     # Fetch number of grand prix per year
-    number_of_races_per_gp = _extract_nb_gp_from_years(years)
+    number_of_races_per_gp = _extract_nb_gp_from_years(years_to_fetch)
     # Loading checkpoint if exists
     checkpoint = load_checkpoint()
     
     # Extracting progress from checkpoint
     if checkpoint["year"] is not None:
         # progression_index = checkpoint["year"] - years[0] # Assumes years are consecutive and not duplicated
-        progression_index = years.index(checkpoint["year"])
-        years = years[progression_index:]
+        progression_index = years_to_fetch.index(checkpoint["year"])
+        years_to_fetch = years_to_fetch[progression_index:]
         number_of_races_per_gp = number_of_races_per_gp[progression_index:]
         
-    gp_index_start = 1
-    if checkpoint["gp_index_start"] is not None:
-        gp_index_start = checkpoint["gp_index_start"]
-    
     sessions = load_sessions()
-    if not sessions:
+    if not _is_sessions_dict_valid(sessions):
+        logging.error("Loaded sessions cache is invalid, starting from empty cache.")
         sessions = {}
-        
-    # Loading data and updating checkpoint at each iteration
-    try:
-        count = 0
-        for year, nb_gp in zip(years, number_of_races_per_gp):
-            sessions[year] = []
-            for gp_index in range(gp_index_start, nb_gp+1):
-                try:
-                    session = fastf1.get_session(year, gp_index, 'R')
-                except Exception as e:
-                    logging.error(f"ERROR FETCHING SESSION: {year} {gp_index} - {e}")
-                    continue
-                gp_name = session.event.EventName
-                print(f"+------- FETCHING GP: {gp_name} {year} {gp_index}/{nb_gp} -------+")
-                try:
-                    session.load()
-                except Exception as e:
-                    logging.error(f"ERROR LOADING SESSION: {year} {gp_index} - {e}")
-                    continue
-                sessions[year].append(session)
-                count += 1
-        
-                if count % 5 == 0:
-                    logging.info("Saving checkpoint..")
-                    if _is_sessions_dict_valid(sessions):
-                        save_sessions(sessions)
-                        save_checkpoint(checkpoint)
-                    else:
-                        logging.error("Sessions dict is invalid, skipping checkpoint save.")
-                        pprint.pprint(sessions)
-                        break
-                    checkpoint["year"] = year
-                    checkpoint["gp_index_start"] = gp_index
-                    count = 0
-    except KeyboardInterrupt:
-        logging.info("Fetching interrupted by user, saving checkpoint..")
-        if _is_sessions_dict_valid(sessions):
-            save_sessions(sessions)
-            save_checkpoint(checkpoint)
+    else:
+        # Loading data and updating checkpoint at each iteration
+        try:
+            _build_sessions_index(years_to_fetch, number_of_races_per_gp, checkpoint)
+            
+        except KeyboardInterrupt:
+            logging.info("Fetching interrupted by user, saving checkpoint..")
+            if _is_sessions_dict_valid(sessions):
+                save_sessions(sessions)
+                save_checkpoint(checkpoint)
     
     # Final save
     logging.info("Fetching complete, saving checkpoint..")
@@ -170,3 +177,4 @@ def fetch_race_sessions_cache(years: list[int]) -> dict[int, list[fastf1_session
         save_sessions(sessions)
     save_checkpoint(checkpoint)
     return sessions
+
