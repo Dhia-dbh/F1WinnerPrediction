@@ -3,3 +3,25 @@
 *.venv/
 *pkl
 *.sqlite*
+
+# Generated data and outputs
+data/
+cache/
+checkpoints/
+models/
+outputs/
+logs/
+plots/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
