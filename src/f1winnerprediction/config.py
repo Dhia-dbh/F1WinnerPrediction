@@ -1,13 +1,17 @@
 import pathlib
 from pathlib import Path
 
-FASTF1_RAW_CACHE_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/cache")
-FASTF1_CHECKPOINT_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/checkpoints")
-FASTF1_DATA_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/data")
-FASTF1_MODELS_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/models")
-FASTF1_OUTPUT_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/outputs")
-FASTF1_LOGS_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/logs")
-FASTF1_PLOTS_DIR: pathlib.Path = Path("/media/dhiabenhamouda/Dhia/Work/F1WinnerPrediction/src/f1winnerprediction/plots")
+PROJECT_ROOT: pathlib.Path = Path(__file__).parent.parent.resolve()
+
+BASE_DIR: pathlib.Path = PROJECT_ROOT / "f1winnerprediction"
+
+FASTF1_RAW_CACHE_DIR: pathlib.Path = BASE_DIR / "cache"
+FASTF1_CHECKPOINT_DIR: pathlib.Path = BASE_DIR / "checkpoints"
+FASTF1_DATA_DIR: pathlib.Path = BASE_DIR / "data"
+FASTF1_MODELS_DIR: pathlib.Path = BASE_DIR / "models"
+FASTF1_OUTPUT_DIR: pathlib.Path = BASE_DIR / "outputs"
+FASTF1_LOGS_DIR: pathlib.Path = BASE_DIR / "logs"
+FASTF1_PLOTS_DIR: pathlib.Path = BASE_DIR / "plots"
 
 YEARS_TO_FETCH = list(range(2021, 2025 + 1))
 
