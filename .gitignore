@@ -3,3 +3,6 @@
 *.venv/
 *pkl
 *.sqlite*
+*log*
+*cache*
+*dump*
