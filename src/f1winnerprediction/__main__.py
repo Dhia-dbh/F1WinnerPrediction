@@ -16,7 +16,7 @@ from f1winnerprediction.pipeline import F1PredictionPipeline
 from f1winnerprediction.metrics import print_evaluation_summary
 
 
-def setup_logging(log_level: str = "INFO", log_file: Path = None) -> None:
+def setup_logging(log_level: str = "INFO", log_file: Path | None = None) -> None:
     """
     Setup logging configuration.
     
@@ -142,7 +142,7 @@ def main():
     
     # Enable FastF1 cache
     logger.info(f"Enabling FastF1 cache at {config.FASTF1_RAW_CACHE_DIR}")
-    fastf1.Cache.enable_cache(config.FASTF1_RAW_CACHE_DIR)
+    fastf1.Cache.enable_cache(config.FASTF1_RAW_CACHE_DIR.as_posix())
     
     # Configure pandas display
     import pandas as pd
