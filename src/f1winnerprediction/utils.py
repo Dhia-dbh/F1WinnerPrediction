@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-def write_to_file(output: str):
+def write_to_file(output: pd.DataFrame | str):
 	if type(output) == pd.DataFrame:
 		output.to_csv("output.csv")
 		return
