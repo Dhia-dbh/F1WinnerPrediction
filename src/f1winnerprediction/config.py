@@ -12,7 +12,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 # Base data directory - can be overridden by environment variable
-BASE_DATA_DIR = Path(os.getenv("F1_DATA_DIR", PROJECT_ROOT / "data"))
+BASE_DATA_DIR = Path(PROJECT_ROOT / "data")
 
 # FastF1 directories
 FASTF1_RAW_CACHE_DIR: pathlib.Path = BASE_DATA_DIR / "cache"

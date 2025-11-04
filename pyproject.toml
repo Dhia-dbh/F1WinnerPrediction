@@ -6,7 +6,7 @@ authors = [
     {name = "Dhia Ben Hamouda",email = "dhiabenhamouda2002@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.3.4,<3.0.0",
     "pandas>=2.3.3,<3.0.0",
