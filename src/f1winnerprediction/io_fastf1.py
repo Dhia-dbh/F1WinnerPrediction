@@ -112,6 +112,7 @@ def _is_sessions_dict_valid(sessions: dict) -> bool:
 	return True
 
 def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], checkpoint: dict[str, int] = config.DEFAULT_CHECKPOINT) -> dict[int, list[fastf1_session]]:
+	# TODO: Add tqdm for loop tracking and proper logging syntax
 	sessions = {}
 	count = 0
 	gp_index_start = checkpoint["gp_index_start"]
@@ -143,7 +144,10 @@ def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], c
 					pprint.pprint(sessions)
 					break
 				checkpoint["year"] = year
-				checkpoint["gp_index_start"] = gp_index
+				# checkpoint["gp_index_start"] = gp_index
+				# Start checkpoint from the next one
+				# Don't refetch the current sessions
+				checkpoint["gp_index_start"] = gp_index + 1
 				count = 0
 	return sessions
 
