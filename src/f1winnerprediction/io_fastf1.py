@@ -14,6 +14,9 @@ import math
 
 import f1winnerprediction.config as config
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 # TODO: Implement session caching
 # TODO: Refactor code and move helper function to utils.py
 sessions_dump_path = config.FASTF1_CHECKPOINT_DIR / "sessions_dump.pkl"
@@ -28,23 +31,37 @@ def save_sessions(sessions: dict, path: Path = sessions_dump_path) -> None:
 
 def load_sessions(path: Path = sessions_dump_path) -> dict[int, list[fastf1_session]]:
 	if not path.exists():
-		logging.warning("Sessions dump not found at %s. Returning empty cache.", path)
+		logger.warning("Sessions dump not found at %s. Returning empty cache.", path)
 		return {}
 	with open(path, "rb") as file:
 		try:
 			sessions = pickle.load(file)
-			
-		except EOFError as e:
-			logging.error("Empty sessions dumpfile: %s", e)
-			return {}
+			nb_gp_per_year = _extract_nb_gp_from_years(list(sessions.keys()))
+			for year, nb_gp in zip(sessions.keys(), nb_gp_per_year):
+				if len(sessions[year]) < nb_gp:
+					logger.warning(f"Not all sessions fetched for year {year}: expected {nb_gp}, got {len(sessions[year])}")
+					# return False
+				elif len(sessions[year]) > nb_gp:
+					logger.warning(f"Too many sessions fetched for year {year}: expected {nb_gp}, got {len(sessions[year])}")
+					# return False.error("Empty sessions dumpfile: %s", e)
+			return sessions
 		except Exception as e:
-			logging.error("Error loading sessions: %s", e)
+			logger.error("Error loading sessions: %s", e)
 			return {}
 		
 	if not _is_sessions_dict_valid(sessions):
-		logging.error("Sessions dump has unexpected type: %s", type(sessions))
+		logger.error("Sessions dump has unexpected type: %s", type(sessions))
 		return {}
 	
+	return sessions
+
+def load_sessions_from_years(years: list[int]=config.YEARS_TO_FETCH, session_dump_file_prefix: str = "sessions_dump") -> dict[int, list[fastf1_session]]:
+	sessions = {}
+	for year in years:
+		session_dump_name = f"{session_dump_file_prefix}_{year}.pkl"
+		session_dump_path = config.FASTF1_CHECKPOINT_DIR / session_dump_name
+		session = load_sessions(session_dump_path)
+		sessions.update(session)
 	return sessions
 
 
@@ -61,21 +78,21 @@ def load_checkpoint(path: Path = checkpoint_dump_path) -> dict:
 		"gp_index_start": 1,
 	}
 	if not path.exists():
-		logging.warning("Checkpoint file does not exist at %s, using defaults.", path)
+		logger.warning("Checkpoint file does not exist at %s, using defaults.", path)
 		return checkpoint
 	with open(path, "r") as file:
 		try:
 			loaded = json.load(file)
 		except json.JSONDecodeError as e:
-			logging.error("Invalid checkpoint JSON at %s: %s", path, e)
+			logger.error("Invalid checkpoint JSON at %s: %s", path, e)
 			return checkpoint
 		except Exception as e:
-			logging.error("Error loading checkpoint from %s: %s", path, e)
+			logger.error("Error loading checkpoint from %s: %s", path, e)
 			return checkpoint
 	if _is_checkpoint_valid(loaded):
 		checkpoint = loaded
 	else:
-		logging.error("Checkpoint file %s does not contain a dict. Using defaults.", path)
+		logger.error("Checkpoint file %s does not contain a dict. Using defaults.", path)
 	return checkpoint
 
 
@@ -95,7 +112,7 @@ def _is_checkpoint_valid(checkpoint) -> bool:
    )
 	
 # Verify that the sessions dict is valid
-def _is_sessions_dict_valid(sessions: dict) -> bool:
+def _is_sessions_dict_valid(sessions: dict[int, list[fastf1_session]]) -> bool:
 	if not isinstance(sessions, dict):
 		return False
 	for year, sessions_list in sessions.items():
@@ -109,6 +126,8 @@ def _is_sessions_dict_valid(sessions: dict) -> bool:
 		for session in sessions_list:
 			if not isinstance(session, fastf1_session):
 				return False
+		if len(sessions.keys()) == 0:
+			return False
 	return True
 
 def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], checkpoint: dict[str, int] = config.DEFAULT_CHECKPOINT) -> dict[int, list[fastf1_session]]:
@@ -122,25 +141,25 @@ def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], c
 			try:
 				session = fastf1.get_session(year, gp_index, 'R')
 			except Exception as e:
-				logging.error(f"ERROR FETCHING SESSION: {year} {gp_index} - {e}")
+				logger.error(f"ERROR FETCHING SESSION: {year} {gp_index} - {e}")
 				continue
 			gp_name = session.event.EventName
 			print(f"+------- FETCHING GP: {gp_name} {year} {gp_index}/{nb_gp} -------+")
 			try:
 				session.load()
 			except Exception as e:
-				logging.error(f"ERROR LOADING SESSION: {year} {gp_index} - {e}")
+				logger.error(f"ERROR LOADING SESSION: {year} {gp_index} - {e}")
 				continue
 			sessions[year].append(session)
 			count += 1
 	
 			if count % 5 == 0:
-				logging.info("Saving checkpoint..")
+				logger.info("Saving checkpoint..")
 				if _is_sessions_dict_valid(sessions):
 					save_sessions(sessions)
 					save_checkpoint(checkpoint)
 				else:
-					logging.error("Sessions dict is invalid, skipping checkpoint save.")
+					logger.error("Sessions dict is invalid, skipping checkpoint save.")
 					pprint.pprint(sessions)
 					break
 				checkpoint["year"] = year
@@ -155,6 +174,7 @@ def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], c
 def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH, use_sessions_cache: bool = True, use_checkpoint: bool= True) -> dict[int, list[fastf1_session]]:
  	# Fetch number of grand prix per year
 	number_of_races_per_gp = _extract_nb_gp_from_years(years_to_fetch)
+	logger.debug(f"Number of GPs/years: {number_of_races_per_gp}")
 	# Loading checkpoint if exists
 	checkpoint = load_checkpoint()
 	if use_checkpoint:
@@ -167,7 +187,7 @@ def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH,
 	else:
 		checkpoint = config.DEFAULT_CHECKPOINT.copy()
 
-	logging.info(f"Starting fetch from year {checkpoint['year']} grand prix index {checkpoint['gp_index_start']}")
+	logger.info(f"Starting fetch from year {checkpoint['year']} grand prix index {checkpoint['gp_index_start']}")
 
 	sessions = {}
  
@@ -175,7 +195,7 @@ def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH,
 	if use_sessions_cache:	
 		sessions = load_sessions()
 		if not _is_sessions_dict_valid(sessions):
-			logging.error("Loaded sessions cache is invalid, starting from empty cache.")
+			logger.error("Loaded sessions cache is invalid, starting from empty cache.")
 			sessions = {}
 		else:
 			is_sessions_cache_loaded = True
@@ -187,13 +207,13 @@ def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH,
 			sessions = _build_sessions_index(years_to_fetch, number_of_races_per_gp, checkpoint)
 			
 		except KeyboardInterrupt:
-			logging.info("Fetching interrupted by user, saving checkpoint..")
+			logger.info("Fetching interrupted by user, saving checkpoint..")
 			if _is_sessions_dict_valid(sessions):
 				save_sessions(sessions)
 				save_checkpoint(checkpoint)
 	
 	# Final save
-	logging.info("Fetching complete, saving checkpoint..")
+	logger.info("Fetching complete, saving checkpoint..")
 	if _is_sessions_dict_valid(sessions):
 		save_sessions(sessions)
 	save_checkpoint(checkpoint)
@@ -211,12 +231,14 @@ def build_drivers_dict(sessions: dict[int, list[fastf1_session]]) -> dict[str, d
 				drivers[session_driver] = {"index": index}
 	return drivers
 
-def _aggregate_driver_race__quali_results(sessions: dict[int, list[fastf1_session]], drivers_dict: dict[str, dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
+def aggregate_driver_race__quali_results(sessions: dict[int, list[fastf1_session]], drivers_dict: dict[str, dict]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 	df_drivers = pd.DataFrame({'Abbreviation': drivers_dict.keys()})
 	df_raceonly = df_drivers.copy()
 	df_qualionly = df_drivers.copy()
+	df_qualirace = df_drivers.copy()
 	for year in sessions.keys():
 		for session in sessions[year]:
+			session.results.sort_values(by="Abbreviation", ascending=True, inplace=True)
 			event_name = session.event.EventName
 			event_name_year = event_name + "_" + str(year)
 			session_results = session.results[["Abbreviation", "GridPosition", "Position"]].copy()
@@ -227,10 +249,11 @@ def _aggregate_driver_race__quali_results(sessions: dict[int, list[fastf1_sessio
 							}, inplace=True
 						  )
 			df_raceonly = pd.merge(df_raceonly, session_results[["Abbreviation", f"{event_name_year}_Position"]], on='Abbreviation', how='left')
-			df_qualionly = pd.merge(df_qualionly, session_results[["Abbreviation", f"{event_name_year}_GridPosition", f"{event_name_year}_Position"]], on='Abbreviation', how='left')
-			session.results.sort_values(by="Abbreviation", ascending=True, inplace=True)
-	assert df_raceonly.shape[0] == df_qualionly.shape[0] and df_raceonly.shape[1] == df_qualionly.shape[1], "DataFrames shapes do not match after aggregation."
-	return df_raceonly, df_qualionly
+			df_qualionly = pd.merge(df_qualionly, session_results[["Abbreviation", f"{event_name_year}_GridPosition"]], on='Abbreviation', how='left')
+			df_qualirace = pd.merge(df_qualirace, session_results[["Abbreviation", f"{event_name_year}_GridPosition", f"{event_name_year}_Position"]], on='Abbreviation', how='left')
+	assert df_raceonly.shape[0] == df_qualionly.shape[0], f"DataFrames row shapes do not match after aggregation. Raceonly: {df_raceonly.shape[0]}, Qualionly: {df_qualionly.shape[0]}"
+	assert df_raceonly.shape[1] == df_qualionly.shape[1], f"DataFrames column shapes do not match after aggregation. Raceonly: {df_raceonly.shape[1]}, Qualionly: {df_qualionly.shape[1]}"
+	return df_raceonly, df_qualionly, df_qualirace
 
 
 def create_columns_windows_raceonly(df:pd.DataFrame, windows_index_start=1, windows_size=5, stride=1):
