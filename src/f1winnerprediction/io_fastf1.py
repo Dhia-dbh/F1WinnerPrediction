@@ -92,7 +92,7 @@ def _is_checkpoint_valid(checkpoint) -> bool:
 	return (isinstance(checkpoint, dict) and
 			("year" in checkpoint and (checkpoint["year"] is None or isinstance(checkpoint["year"], int))) and
 			("gp_index_start" in checkpoint and (checkpoint["gp_index_start"] is None or isinstance(checkpoint["gp_index_start"], int)))
-		   )
+   )
 	
 # Verify that the sessions dict is valid
 def _is_sessions_dict_valid(sessions: dict) -> bool:
@@ -151,28 +151,40 @@ def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], c
 				count = 0
 	return sessions
 
-
-def fetch_race_sessions_cache(years_to_fetch: list[int]) -> dict[int, list[fastf1_session]]:
-	# Fetch number of grand prix per year
+# TODO: Add a checkpoint constructor to match the years_to_fetch list when use_checkpoint is False
+def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH, use_sessions_cache: bool = True, use_checkpoint: bool= True) -> dict[int, list[fastf1_session]]:
+ 	# Fetch number of grand prix per year
 	number_of_races_per_gp = _extract_nb_gp_from_years(years_to_fetch)
 	# Loading checkpoint if exists
 	checkpoint = load_checkpoint()
-	
-	# Extracting progress from checkpoint
-	if checkpoint["year"] is not None:
-		# progression_index = checkpoint["year"] - years[0] # Assumes years are consecutive and not duplicated
-		progression_index = years_to_fetch.index(checkpoint["year"])
-		years_to_fetch = years_to_fetch[progression_index:]
-		number_of_races_per_gp = number_of_races_per_gp[progression_index:]
-		
-	sessions = load_sessions()
-	if not _is_sessions_dict_valid(sessions):
-		logging.error("Loaded sessions cache is invalid, starting from empty cache.")
-		sessions = {}
+	if use_checkpoint:
+		# Extracting progress from checkpoint
+		if checkpoint["year"] is not None:
+			# progression_index = checkpoint["year"] - years[0] # Assumes years are consecutive and not duplicated
+			progression_index = years_to_fetch.index(checkpoint["year"])
+			years_to_fetch = years_to_fetch[progression_index:]
+			number_of_races_per_gp = number_of_races_per_gp[progression_index:]
 	else:
+		checkpoint = config.DEFAULT_CHECKPOINT.copy()
+
+	logging.info(f"Starting fetch from year {checkpoint['year']} grand prix index {checkpoint['gp_index_start']}")
+
+	sessions = {}
+ 
+	is_sessions_cache_loaded = False
+	if use_sessions_cache:	
+		sessions = load_sessions()
+		if not _is_sessions_dict_valid(sessions):
+			logging.error("Loaded sessions cache is invalid, starting from empty cache.")
+			sessions = {}
+		else:
+			is_sessions_cache_loaded = True
+   
+	print("Hello")	
+	if not is_sessions_cache_loaded:
 		# Loading data and updating checkpoint at each iteration
 		try:
-			_build_sessions_index(years_to_fetch, number_of_races_per_gp, checkpoint)
+			sessions = _build_sessions_index(years_to_fetch, number_of_races_per_gp, checkpoint)
 			
 		except KeyboardInterrupt:
 			logging.info("Fetching interrupted by user, saving checkpoint..")
@@ -199,6 +211,28 @@ def build_drivers_dict(sessions: dict[int, list[fastf1_session]]) -> dict[str, d
 				drivers[session_driver] = {"index": index}
 	return drivers
 
+def _aggregate_driver_race__quali_results(sessions: dict[int, list[fastf1_session]], drivers_dict: dict[str, dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
+	df_drivers = pd.DataFrame({'Abbreviation': drivers_dict.keys()})
+	df_raceonly = df_drivers.copy()
+	df_qualionly = df_drivers.copy()
+	for year in sessions.keys():
+		for session in sessions[year]:
+			event_name = session.event.EventName
+			event_name_year = event_name + "_" + str(year)
+			session_results = session.results[["Abbreviation", "GridPosition", "Position"]].copy()
+			session_results.rename(columns=
+							{
+								"GridPosition": f"{event_name_year}_GridPosition",
+								"Position": f"{event_name_year}_Position"
+							}, inplace=True
+						  )
+			df_raceonly = pd.merge(df_raceonly, session_results[["Abbreviation", f"{event_name_year}_Position"]], on='Abbreviation', how='left')
+			df_qualionly = pd.merge(df_qualionly, session_results[["Abbreviation", f"{event_name_year}_GridPosition", f"{event_name_year}_Position"]], on='Abbreviation', how='left')
+			session.results.sort_values(by="Abbreviation", ascending=True, inplace=True)
+	assert df_raceonly.shape[0] == df_qualionly.shape[0] and df_raceonly.shape[1] == df_qualionly.shape[1], "DataFrames shapes do not match after aggregation."
+	return df_raceonly, df_qualionly
+
+
 def create_columns_windows_raceonly(df:pd.DataFrame, windows_index_start=1, windows_size=5, stride=1):
 	df_windows = pd.DataFrame(columns=[f"race{i}" for i in range(windows_size)])
 
@@ -223,6 +257,35 @@ def create_columns_windows_raceonly(df:pd.DataFrame, windows_index_start=1, wind
 				window_index += 1 + last_nan_pos
 				continue
 			df_windows.loc[len(df_windows)] = window.values  
+			window_index += 1
+			# print(window)	
+			# print("+++++++++++++++++++")
+	return df_windows
+
+def create_columns_windows_race_quali(df_qualirace: pd.DataFrame, windows_index_start=1, windows_size=5, stride=1):
+	df_windows = pd.DataFrame(columns=[name for i in range(windows_size) for name in (f"quali{i}", f"race{i}")])
+
+	# all_windows = []
+	length = df_qualirace.shape[1] - windows_index_start
+	nb_windows = math.floor((length//2 - windows_size)/stride) + 1
+	qualirace: pandas.core.series.Series
+	for _, qualirace in df_qualirace.iterrows():
+		window_index = 0
+		while window_index < nb_windows:
+		# for window_index in range(nb_windows):
+			window_name = f"window_{window_index}"
+			start_col_index = windows_index_start + window_index * 2 * stride
+			end_col_index = start_col_index + windows_size * 2
+			qualirace_window = qualirace[start_col_index:end_col_index]
+			# exclude windows with NaN values
+			if qualirace_window.isnull().any():
+				# find last null within the window and set it to the current window_index
+				quali_nan_pos = np.where(qualirace_window.isnull().to_numpy())[0]
+				last_nan_pos = quali_nan_pos[-1]
+				print(f"Skipping window {window_name} due to NaN before position {last_nan_pos}, jumping to window_index {window_index + last_nan_pos}")
+				window_index += 1 + last_nan_pos
+				continue
+			df_windows.loc[len(df_windows)] = qualirace_window.values
 			window_index += 1
 			# print(window)	
 			# print("+++++++++++++++++++")
