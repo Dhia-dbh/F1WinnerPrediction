@@ -56,6 +56,9 @@ def load_sessions(path: Path = sessions_dump_path) -> dict[int, list[fastf1_sess
 	return sessions
 
 def load_sessions_from_years(years: list[int]=config.YEARS_TO_FETCH, session_dump_file_prefix: str = "sessions_dump") -> dict[int, list[fastf1_session]]:
+	"""
+	Load sessions from multiple yearly dump files
+	"""
 	sessions = {}
 	for year in years:
 		session_dump_name = f"{session_dump_file_prefix}_{year}.pkl"
@@ -73,6 +76,9 @@ def save_checkpoint(checkpoint: dict, path: Path = checkpoint_dump_path) -> None
 
 
 def load_checkpoint(path: Path = checkpoint_dump_path) -> dict:
+	"""
+	Load checkpoint from file, or return default if not found or invalid
+	"""
 	checkpoint = {
 		"year": config.YEARS_TO_FETCH[0],
 		"gp_index_start": 1,
@@ -109,7 +115,7 @@ def _is_checkpoint_valid(checkpoint) -> bool:
 	return (isinstance(checkpoint, dict) and
 			("year" in checkpoint and (checkpoint["year"] is None or isinstance(checkpoint["year"], int))) and
 			("gp_index_start" in checkpoint and (checkpoint["gp_index_start"] is None or isinstance(checkpoint["gp_index_start"], int)))
-   )
+	)
 	
 # Verify that the sessions dict is valid
 def _is_sessions_dict_valid(sessions: dict[int, list[fastf1_session]]) -> bool:
@@ -130,7 +136,14 @@ def _is_sessions_dict_valid(sessions: dict[int, list[fastf1_session]]) -> bool:
 			return False
 	return True
 
-def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], checkpoint: dict[str, int] = config.DEFAULT_CHECKPOINT) -> dict[int, list[fastf1_session]]:
+def _build_sessions_index(years: list[int], 
+								  number_of_races_per_gp: list[int], 
+								  checkpoint: dict[str, int] = config.DEFAULT_CHECKPOINT, 
+								  load_params: dict = {
+		'telemetry': False,
+		'weather': False,
+		'messages': False
+  }) -> dict[int, list[fastf1_session]]:
 	# TODO: Add tqdm for loop tracking and proper logging syntax
 	sessions = {}
 	count = 0
@@ -146,7 +159,7 @@ def _build_sessions_index(years: list[int], number_of_races_per_gp: list[int], c
 			gp_name = session.event.EventName
 			print(f"+------- FETCHING GP: {gp_name} {year} {gp_index}/{nb_gp} -------+")
 			try:
-				session.load()
+				session.load(**load_params)
 			except Exception as e:
 				logger.error(f"ERROR LOADING SESSION: {year} {gp_index} - {e}")
 				continue
@@ -199,7 +212,7 @@ def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH,
 			sessions = {}
 		else:
 			is_sessions_cache_loaded = True
-   
+	
 	print("Hello")	
 	if not is_sessions_cache_loaded:
 		# Loading data and updating checkpoint at each iteration

@@ -13,6 +13,8 @@ FASTF1_LOGS_DIR: pathlib.Path = BASE_DIR / "logs"
 FASTF1_PLOTS_DIR: pathlib.Path = FASTF1_REPORTS / "plots"
 FASTF1_RAW_CACHE_DIR: pathlib.Path = FASTF1_DATA_DIR / "cache"
 FASTF1_CHECKPOINT_DIR: pathlib.Path = FASTF1_DATA_DIR / "checkpoints"
+FASTF1_INTERIM_DATA_DIR: pathlib.Path = FASTF1_DATA_DIR / "interim"
+LAP_TIMES_DATASET_CSV_PATH: pathlib.Path = FASTF1_INTERIM_DATA_DIR / "lap_times_dataset.csv"
 
 YEARS_TO_FETCH = list(range(2021, 2025 + 1))
 
