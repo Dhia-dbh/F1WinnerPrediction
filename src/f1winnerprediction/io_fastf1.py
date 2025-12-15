@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 from datetime import datetime
 import pprint
-
+from tqdm import tqdm
 import fastf1
 from fastf1.core import Session as fastf1_session
 import pandas as pd
@@ -182,6 +182,71 @@ def _build_sessions_index(years: list[int],
 				checkpoint["gp_index_start"] = gp_index + 1
 				count = 0
 	return sessions
+
+def build_consecutive_lap_time_dataset(
+	sessions: dict[int, list[fastf1_session]],
+	gp_index_map: dict[str, dict[int, int]],
+) -> pd.DataFrame:
+	# Build a DataFrame that links each driver to the same Grand Prix across consecutive seasons.
+	rows: list[pd.DataFrame] = []
+	for prev_year in tqdm(sorted(sessions.keys()), desc="Seasons"):
+		next_year = prev_year + 1
+		try: 
+			gp_key = f"{prev_year}-{next_year}"
+			if next_year not in sessions or gp_key not in gp_index_map:
+				continue
+			mapping = gp_index_map[gp_key]
+			for session_index, prev_session in enumerate(sessions[prev_year]):
+				mapped_index = mapping.get(session_index)
+				if mapped_index is None or mapped_index >= len(sessions[next_year]):
+					continue
+				next_session = sessions[next_year][mapped_index]
+				if prev_session.event.EventName != next_session.event.EventName:
+					continue
+				prev_laps = prev_session.laps[["Driver", "LapTime"]].dropna().copy()
+				next_laps = next_session.laps[["Driver", "LapTime"]].dropna().copy()
+				if prev_laps.empty or next_laps.empty:
+					continue
+
+				prev_laps["LapTime"] = prev_laps["LapTime"].astype("timedelta64[ns]") \
+										.dt.total_seconds()
+				next_laps["LapTime"] = next_laps["LapTime"].astype("timedelta64[ns]") \
+										.dt.total_seconds()
+    
+				prev_means = (
+					prev_laps.groupby("Driver", as_index=False)["LapTime"]
+					.mean()
+					.rename(columns={"LapTime": "PrevLapTimeSeconds"})
+				)
+				next_means = (
+					next_laps.groupby("Driver", as_index=False)["LapTime"]
+					  .mean()
+					  .rename(columns={"LapTime": "CurrentLapTimeSeconds"})
+				   )
+				merged = prev_means.merge(next_means, on="Driver", how="inner")
+				merged["EventName"] = prev_session.event.EventName
+				merged["PrevSeason"] = prev_year
+				merged["CurrentSeason"] = next_year
+				rows.append(merged)
+		except Exception as e:
+			print(f"Error processing seasons {prev_year} and {next_year}: {e}")
+			continue
+	if not rows:
+		return pd.DataFrame(
+			columns=[
+				"Driver",
+				"PrevLapTimeSeconds",
+				"CurrentLapTimeSeconds",
+				"EventName",
+				"PrevSeason",
+				"CurrentSeason",
+			]
+		)
+	dataset = pd.concat(rows, ignore_index=True)
+	dataset = dataset.drop_duplicates(
+		subset=["Driver", "EventName", "PrevSeason", "CurrentSeason"]
+	).reset_index(drop=True)
+	return dataset
 
 # TODO: Add a checkpoint constructor to match the years_to_fetch list when use_checkpoint is False
 def fetch_race_sessions_cache(years_to_fetch: list[int] = config.YEARS_TO_FETCH, use_sessions_cache: bool = True, use_checkpoint: bool= True) -> dict[int, list[fastf1_session]]:
