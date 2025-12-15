@@ -1,7 +1,7 @@
 from requests_cache import logger
 
 
-def map_gp_indices_between_years(sessions: dict, year_start: int | None = None, year_end: int | None = None) -> dict[int, int]:
+def map_gp_indices_between_years(sessions: dict, year_start: int | None = None, year_end: int | None = None) -> dict[str, dict[int, int]]:
 	"""
 	Maps a given year to a Grand Prix index.
 
